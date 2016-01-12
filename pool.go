@@ -48,7 +48,7 @@ type Pool struct {
 	poolCloseSignal chan bool
 }
 
-func (pool *Pool) start(handler func(interface{}) interface{}) error {
+func (pool *Pool) start(handler func(interface{}) interface{}) {
 
 	// worker definition
 	worker := func() {
@@ -62,7 +62,6 @@ func (pool *Pool) start(handler func(interface{}) interface{}) error {
 					defer func() {
 						if r := recover(); r != nil {
 							log.Error("woker handler panic", r)
-							return nil
 						}
 					}()
 
@@ -75,9 +74,9 @@ func (pool *Pool) start(handler func(interface{}) interface{}) error {
 				log.Trace("Recive close signal. Close go routine.")
 				atomic.AddInt64(&pool.poolSize, -1)
 				return
-			case <-time.After(pool.defaultMaxIdleMs * time.Millisecond):
-				size := atomic.LoadInt64(pool.poolSize)
-				if size > pool.defaultMaxIdleSize && atomic.CompareAndSwapInt64(pool.poolSize, size, size-1) {
+			case <-time.After(time.Duration(pool.defaultMaxIdleMs) * time.Millisecond):
+				size := atomic.LoadInt64(&pool.poolSize)
+				if size > pool.defaultMaxIdleSize && atomic.CompareAndSwapInt64(&pool.poolSize, size, size-1) {
 					log.Trace("Pool idle time longer than maxIdleTime, close")
 					return
 				}
@@ -87,7 +86,7 @@ func (pool *Pool) start(handler func(interface{}) interface{}) error {
 	}
 
 	// start workers
-	for i := 0; i < pool.defaultInitPoolSize; i++ {
+	for i := int64(0); i < pool.defaultInitPoolSize; i++ {
 		go worker()
 	}
 
@@ -98,18 +97,18 @@ func (pool *Pool) start(handler func(interface{}) interface{}) error {
 			case <-pool.poolCloseSignal:
 				log.Debug("Goroutine is closed. Close all goroutines")
 				return
-			case <-time.After(pool.defaultMonitorMs * time.Millisecond):
+			case <-time.After(time.Duration(pool.defaultMonitorMs) * time.Millisecond):
 
-				blockedSize := len(pool.inboundChannel)
+				blockedSize := int64(len(pool.inboundChannel))
 				if blockedSize > 0 {
-					poolSize := atomic.LoadInt64(pool.poolSize)
+					poolSize := atomic.LoadInt64(&pool.poolSize)
 					if poolSize < pool.defaultMaxPoolSize {
 						size := poolSize - pool.defaultMaxPoolSize
 						if size > blockedSize {
 							size = blockedSize
 						}
 
-						for i := 0; i < size; i++ {
+						for i := int64(0); i < size; i++ {
 							go worker()
 						}
 					}
@@ -119,14 +118,14 @@ func (pool *Pool) start(handler func(interface{}) interface{}) error {
 	}()
 }
 
-func (pool *Pool) close() {
+func (pool *Pool) Close() {
 	close(pool.poolCloseSignal)
 }
 
-func (pool *Pool) Produce(task interface{}) {
-	pool.inboundChannel <- task
+func (pool *Pool) InboundChannel() chan<- interface{} {
+	return pool.inboundChannel
 }
 
-func (pool *Pool) Consume() (interface{}, bool) {
-	return <-pool.outboundChannel
+func (pool *Pool) OutboundChannel() <-chan interface{} {
+	return pool.outboundChannel
 }
