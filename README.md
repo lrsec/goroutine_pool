@@ -3,8 +3,10 @@
 goroutine_pool is a dynamic pool of goroutines followed the pipeline pattern.
 
 # Purpose
-
-Long-live and reusable goroutines are created in pool, instead of short-live goroutines, in order to reduce the overheads of goroutines and the burden of GC.
+* Reuse goroutines
+* Reduce overheads of creating huge number of short-live goroutines
+* Reduce burden of GC
+* Control total number of goroutines
 
 # Usage
 
