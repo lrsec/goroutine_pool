@@ -8,21 +8,21 @@ import (
 	"time"
 )
 
-func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, inboundChannelBuffer, outboundChannelBuffer int64, handler func(interface{}) interface{}) (*Pool, error) {
-	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || inboundChannelBuffer < 0 || outboundChannelBuffer < 0 || handler == nil {
-		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, inboundChannelBuffer: %v, outboundChannelBuffer: %v, handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, inboundChannelBuffer, outboundChannelBuffer, handler))
+func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer int64, inboundChannel chan interface{}, handler func(interface{}) interface{}) (*Pool, error) {
+	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || outboundChannelBuffer < 0 || inboundChannel == nil || handler == nil {
+		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, outboundChannelBuffer: %v, inboundChannel: %v handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, inboundChannel, handler))
 	}
 
 	pool := &Pool{
-		defaultInitPoolSize: initPoolSize,
-		defaultMaxPoolSize:  maxPoolSize,
-		defaultMaxIdleSize:  maxIdleSize,
-		defaultMaxIdleMs:    maxIdleMs,
+		initPoolSize: initPoolSize,
+		maxPoolSize:  maxPoolSize,
+		maxIdleSize:  maxIdleSize,
+		maxIdleMs:    maxIdleMs,
 
-		defaultMonitorMs: 1000,
+		monitorMs: 1000,
 
-		inboundChannel:  make(chan interface{}, inboundChannelBuffer),
-		outboundChannel: make(chan interface{}, outboundChannelBuffer),
+		InboundChannel:  inboundChannel,
+		OutboundChannel: make(chan interface{}, outboundChannelBuffer),
 
 		poolCloseSignal: make(chan bool),
 	}
@@ -33,17 +33,16 @@ func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, inboundChannelBu
 }
 
 type Pool struct {
-	defaultInitPoolSize int64
-	defaultMaxPoolSize  int64
-	defaultMaxIdleMs    int64
-	defaultMaxIdleSize  int64
-
-	defaultMonitorMs int64
+	initPoolSize int64
+	maxPoolSize  int64
+	maxIdleMs    int64
+	maxIdleSize  int64
+	monitorMs    int64
 
 	poolSize int64
 
-	inboundChannel  chan interface{}
-	outboundChannel chan interface{}
+	InboundChannel  chan interface{}
+	OutboundChannel chan interface{}
 
 	poolCloseSignal chan bool
 }
@@ -57,7 +56,7 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 
 		for {
 			select {
-			case c := <-pool.inboundChannel:
+			case c := <-pool.InboundChannel:
 				result := func() interface{} {
 					defer func() {
 						if r := recover(); r != nil {
@@ -68,15 +67,15 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 					return handler(c)
 				}()
 				if result != nil {
-					pool.outboundChannel <- result
+					pool.OutboundChannel <- result
 				}
 			case <-pool.poolCloseSignal:
 				log.Trace("Recive close signal. Close go routine.")
 				atomic.AddInt64(&pool.poolSize, -1)
 				return
-			case <-time.After(time.Duration(pool.defaultMaxIdleMs) * time.Millisecond):
+			case <-time.After(time.Duration(pool.maxIdleMs) * time.Millisecond):
 				size := atomic.LoadInt64(&pool.poolSize)
-				if size > pool.defaultMaxIdleSize && atomic.CompareAndSwapInt64(&pool.poolSize, size, size-1) {
+				if size > pool.maxIdleSize && atomic.CompareAndSwapInt64(&pool.poolSize, size, size-1) {
 					log.Trace("Pool idle time longer than maxIdleTime, close")
 					return
 				}
@@ -86,7 +85,7 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 	}
 
 	// start workers
-	for i := int64(0); i < pool.defaultInitPoolSize; i++ {
+	for i := int64(0); i < pool.initPoolSize; i++ {
 		go worker()
 	}
 
@@ -96,14 +95,15 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 			select {
 			case <-pool.poolCloseSignal:
 				log.Debug("Goroutine is closed. Close all goroutines")
+				close(pool.OutboundChannel)
 				return
-			case <-time.After(time.Duration(pool.defaultMonitorMs) * time.Millisecond):
+			case <-time.After(time.Duration(pool.monitorMs) * time.Millisecond):
 
-				blockedSize := int64(len(pool.inboundChannel))
+				blockedSize := int64(len(pool.InboundChannel))
 				if blockedSize > 0 {
 					poolSize := atomic.LoadInt64(&pool.poolSize)
-					if poolSize < pool.defaultMaxPoolSize {
-						size := poolSize - pool.defaultMaxPoolSize
+					if poolSize < pool.maxPoolSize {
+						size := poolSize - pool.maxPoolSize
 						if size > blockedSize {
 							size = blockedSize
 						}
@@ -120,12 +120,4 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 
 func (pool *Pool) Close() {
 	close(pool.poolCloseSignal)
-}
-
-func (pool *Pool) InboundChannel() chan<- interface{} {
-	return pool.inboundChannel
-}
-
-func (pool *Pool) OutboundChannel() <-chan interface{} {
-	return pool.outboundChannel
 }

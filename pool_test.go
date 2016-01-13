@@ -7,7 +7,11 @@ import (
 )
 
 func TestNewWithError(t *testing.T) {
-	_, err := NewPool(-1, 1, 1, 1, 1, 1, func(interface{}) interface{} {
+	inboundChannel := make(chan interface{})
+
+	defer close(inboundChannel)
+
+	_, err := NewPool(-1, 1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -15,7 +19,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, -1, 1, 1, 1, 1, func(interface{}) interface{} {
+	_, err = NewPool(1, -1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -23,7 +27,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, -1, 1, 1, 1, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, -1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -31,7 +35,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, -1, 1, 1, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, -1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -39,7 +43,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, -1, 1, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, 1, -1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -47,7 +51,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, 1, -1, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, 1, 1, nil, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -55,7 +59,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, 1, 1, nil)
+	_, err = NewPool(1, 1, 1, 1, 1, inboundChannel, nil)
 
 	fmt.Println(err)
 	if err == nil {
@@ -65,7 +69,10 @@ func TestNewWithError(t *testing.T) {
 
 func TestNewPool(t *testing.T) {
 
-	pool, err := NewPool(10, 20, 15, 500, 10, 10, func(input interface{}) interface{} {
+	inboundChannel := make(chan interface{}, 10)
+	defer close(inboundChannel)
+
+	pool, err := NewPool(10, 20, 15, 500, 10, inboundChannel, func(input interface{}) interface{} {
 		return input
 	})
 
@@ -80,12 +87,12 @@ func TestNewPool(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		pool.InboundChannel() <- i
+		pool.InboundChannel <- i
 	}
 
 	time.Sleep(2 * time.Second)
 
-	length := len(pool.OutboundChannel())
+	length := len(pool.OutboundChannel)
 
 	if length != 10 {
 		t.Errorf("data not treated correctly with outbound len: %d\n", length)
