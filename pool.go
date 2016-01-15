@@ -3,14 +3,14 @@ package goroutine_pool
 import (
 	"fmt"
 	log "github.com/cihub/seelog"
-	errors "github.com/go-errors/errors"
+	errors "github.com/lrsec/errors/wrapper"
 	"sync/atomic"
 	"time"
 )
 
-func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer int64, inboundChannel chan interface{}, handler func(interface{}) interface{}) (*Pool, error) {
-	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || outboundChannelBuffer < 0 || inboundChannel == nil || handler == nil {
-		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, outboundChannelBuffer: %v, inboundChannel: %v handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, inboundChannel, handler))
+func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark int64, inboundChannel chan interface{}, handler func(interface{}) interface{}) (*Pool, error) {
+	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || outboundChannelBuffer < 0 || watermark < 0 || inboundChannel == nil || handler == nil {
+		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, outboundChannelBuffer: %v, watermark: %v, inboundChannel: %v handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark, inboundChannel, handler))
 	}
 
 	pool := &Pool{
@@ -18,6 +18,7 @@ func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelB
 		maxPoolSize:  maxPoolSize,
 		maxIdleSize:  maxIdleSize,
 		maxIdleMs:    maxIdleMs,
+		watermark:    watermark,
 
 		monitorMs: 1000,
 
@@ -38,6 +39,7 @@ type Pool struct {
 	maxIdleMs    int64
 	maxIdleSize  int64
 	monitorMs    int64
+	watermark    int64
 
 	poolSize int64
 
@@ -100,10 +102,12 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 			case <-time.After(time.Duration(pool.monitorMs) * time.Millisecond):
 
 				blockedSize := int64(len(pool.InboundChannel))
-				if blockedSize > 0 {
+				if blockedSize > pool.watermark {
 					poolSize := atomic.LoadInt64(&pool.poolSize)
 					if poolSize < pool.maxPoolSize {
 						size := poolSize - pool.maxPoolSize
+						blockedSize *= 2
+
 						if size > blockedSize {
 							size = blockedSize
 						}

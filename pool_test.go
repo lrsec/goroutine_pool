@@ -1,7 +1,6 @@
 package goroutine_pool
 
 import (
-	"fmt"
 	"testing"
 	"time"
 )
@@ -11,7 +10,7 @@ func TestNewWithError(t *testing.T) {
 
 	defer close(inboundChannel)
 
-	_, err := NewPool(-1, 1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
+	_, err := NewPool(-1, 1, 1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -19,7 +18,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, -1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
+	_, err = NewPool(1, -1, 1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -27,7 +26,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, -1, 1, 1, inboundChannel, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, -1, 1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -35,7 +34,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, -1, 1, inboundChannel, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, -1, 1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -43,7 +42,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, -1, inboundChannel, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, 1, -1, 1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -51,7 +50,7 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, 1, nil, func(interface{}) interface{} {
+	_, err = NewPool(1, 1, 1, 1, 1, -1, inboundChannel, func(interface{}) interface{} {
 		return nil
 	})
 
@@ -59,9 +58,16 @@ func TestNewWithError(t *testing.T) {
 		t.Error("NewPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, 1, inboundChannel, nil)
+	_, err = NewPool(1, 1, 1, 1, 1, 1, nil, func(interface{}) interface{} {
+		return nil
+	})
 
-	fmt.Println(err)
+	if err == nil {
+		t.Error("NewPool does not report error for incorrect params")
+	}
+
+	_, err = NewPool(1, 1, 1, 1, 1, 1, inboundChannel, nil)
+
 	if err == nil {
 		t.Error("NewPool does not report error for incorrect params")
 	}
@@ -72,7 +78,7 @@ func TestNewPool(t *testing.T) {
 	inboundChannel := make(chan interface{}, 10)
 	defer close(inboundChannel)
 
-	pool, err := NewPool(10, 20, 15, 500, 10, inboundChannel, func(input interface{}) interface{} {
+	pool, err := NewPool(10, 20, 15, 500, 10, 10, inboundChannel, func(input interface{}) interface{} {
 		return input
 	})
 
@@ -103,7 +109,7 @@ func TestWithPanic(t *testing.T) {
 	inboundChannel := make(chan interface{}, 10)
 	defer close(inboundChannel)
 
-	pool, err := NewPool(10, 20, 15, 500, 10, inboundChannel, func(input interface{}) interface{} {
+	pool, err := NewPool(10, 20, 15, 500, 10, 10, inboundChannel, func(input interface{}) interface{} {
 		panic("test")
 	})
 
