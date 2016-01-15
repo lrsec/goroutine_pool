@@ -22,7 +22,7 @@ Get the pool
 
 import "github.com/lrsec/goroutine_pool"
 
-pool, err := goroutine_pool.NewPool(1000, 10000, 1500, 10 * 60 * 1000, 100, 100, func (input interface{}) interface{} {
+pool, err := goroutine_pool.NewPool(1000, 10000, 1500, 10 * 60 * 1000, 100, 100,100, func (input interface{}) interface{} {
     return input
 })
 
@@ -32,8 +32,8 @@ pool, err := goroutine_pool.NewPool(1000, 10000, 1500, 10 * 60 * 1000, 100, 100,
 Use the inbound and outbound channels
 
 ```
-inbound := pool.InboundChannel()
+inbound := pool.InboundChannel
 
-outbound := pool.OutboundChannel()
+outbound := pool.OutboundChannel
 ```
 
