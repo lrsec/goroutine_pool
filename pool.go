@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark int64, inboundChannel chan interface{}, handler func(interface{}) interface{}) (*Pool, error) {
+func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark int64, inboundChannel chan interface{}, handler func(interface{}, chan<- interface{}) interface{}) (*Pool, error) {
 	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || outboundChannelBuffer < 0 || watermark < 0 || inboundChannel == nil || handler == nil {
 		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, outboundChannelBuffer: %v, watermark: %v, inboundChannel: %v handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark, inboundChannel, handler))
 	}
@@ -49,7 +49,7 @@ type Pool struct {
 	poolCloseSignal chan bool
 }
 
-func (pool *Pool) start(handler func(interface{}) interface{}) {
+func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{}) {
 
 	// worker definition
 	worker := func() {
@@ -66,7 +66,7 @@ func (pool *Pool) start(handler func(interface{}) interface{}) {
 						}
 					}()
 
-					return handler(c)
+					return handler(c, pool.OutboundChannel)
 				}()
 				if result != nil {
 					pool.OutboundChannel <- result
