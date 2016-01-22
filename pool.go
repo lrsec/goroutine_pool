@@ -25,7 +25,7 @@ func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelB
 		InboundChannel:  inboundChannel,
 		OutboundChannel: make(chan interface{}, outboundChannelBuffer),
 
-		poolCloseSignal: make(chan bool),
+		PoolCloseSignal: make(chan bool),
 	}
 
 	pool.start(handler)
@@ -46,7 +46,7 @@ type Pool struct {
 	InboundChannel  chan interface{}
 	OutboundChannel chan interface{}
 
-	poolCloseSignal chan bool
+	PoolCloseSignal chan bool
 }
 
 func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{}) {
@@ -71,7 +71,7 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 				if result != nil {
 					pool.OutboundChannel <- result
 				}
-			case <-pool.poolCloseSignal:
+			case <-pool.PoolCloseSignal:
 				log.Trace("Recive close signal. Close go routine.")
 				atomic.AddInt64(&pool.poolSize, -1)
 				return
@@ -95,7 +95,7 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 	go func() {
 		for {
 			select {
-			case <-pool.poolCloseSignal:
+			case <-pool.PoolCloseSignal:
 				log.Debug("Goroutine is closed. Close all goroutines")
 				close(pool.OutboundChannel)
 				return
@@ -123,5 +123,5 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 }
 
 func (pool *Pool) Close() {
-	close(pool.poolCloseSignal)
+	close(pool.PoolCloseSignal)
 }
