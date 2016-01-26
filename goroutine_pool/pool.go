@@ -53,10 +53,12 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 
 	// worker definition
 	worker := func() {
-
 		atomic.AddInt64(&pool.poolSize, 1)
+		timer := time.NewTimer(0)
 
 		for {
+			timer.Reset(time.Duration(pool.maxIdleMs) * time.Millisecond)
+
 			select {
 			case c := <-pool.InboundChannel:
 				result := func() interface{} {
@@ -75,7 +77,7 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 				log.Trace("Recive close signal. Close go routine.")
 				atomic.AddInt64(&pool.poolSize, -1)
 				return
-			case <-time.After(time.Duration(pool.maxIdleMs) * time.Millisecond):
+			case <-timer.C:
 				size := atomic.LoadInt64(&pool.poolSize)
 				if size > pool.maxIdleSize && atomic.CompareAndSwapInt64(&pool.poolSize, size, size-1) {
 					log.Trace("Pool idle time longer than maxIdleTime, close")
@@ -93,14 +95,17 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 
 	// start supervisor
 	go func() {
+		timer := time.NewTimer(0)
+
 		for {
+			timer.Reset(time.Duration(pool.monitorMs) * time.Millisecond)
+
 			select {
 			case <-pool.PoolCloseSignal:
 				log.Debug("Goroutine is closed. Close all goroutines")
 				close(pool.OutboundChannel)
 				return
-			case <-time.After(time.Duration(pool.monitorMs) * time.Millisecond):
-
+			case <-timer.C:
 				blockedSize := int64(len(pool.InboundChannel))
 				if blockedSize > pool.watermark {
 					poolSize := atomic.LoadInt64(&pool.poolSize)
