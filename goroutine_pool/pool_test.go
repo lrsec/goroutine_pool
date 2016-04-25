@@ -6,81 +6,74 @@ import (
 )
 
 func TestNewWithError(t *testing.T) {
-	inboundChannel := make(chan interface{})
+	inboundChannel := make(chan interface{}, 10)
+	outboundChannel := make(chan interface{}, 10)
 
-	defer close(inboundChannel)
+	defer func() {
+		close(inboundChannel)
+		close(outboundChannel)
+	}()
 
-	_, err := NewPool(-1, 1, 1, 1, 1, 1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err := NewGPool(-1, 1, 1, 1*time.Second, 1*time.Second, inboundChannel, outboundChannel, func(interface{}) (interface{}, error) {
+		return nil, nil
+	}, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, -1, 1, 1, 1, 1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err = NewGPool(1, -1, 1, 1*time.Second, 1*time.Second, inboundChannel, outboundChannel, func(interface{}) (interface{}, error) {
+		return nil, nil
+	}, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, -1, 1, 1, 1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err = NewGPool(1, 1, -1, 1*time.Second, 1*time.Second, inboundChannel, outboundChannel, func(interface{}) (interface{}, error) {
+		return nil, nil
+	}, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, -1, 1, 1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err = NewGPool(1, 1, 1, 1*time.Second, 1*time.Second, nil, outboundChannel, func(interface{}) (interface{}, error) {
+		return nil, nil
+	}, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, -1, 1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err = NewGPool(1, 1, 1, 1*time.Second, 1*time.Second, inboundChannel, nil, func(interface{}) (interface{}, error) {
+		return nil, nil
+	}, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 
-	_, err = NewPool(1, 1, 1, 1, 1, -1, inboundChannel, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
+	_, err = NewGPool(1, 1, 1, 1*time.Second, 1*time.Second, inboundChannel, outboundChannel, nil, "test")
 
 	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
-	}
-
-	_, err = NewPool(1, 1, 1, 1, 1, 1, nil, func(interface{}, chan<- interface{}) interface{} {
-		return nil
-	})
-
-	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
-	}
-
-	_, err = NewPool(1, 1, 1, 1, 1, 1, inboundChannel, nil)
-
-	if err == nil {
-		t.Error("NewPool does not report error for incorrect params")
+		t.Error("NewGPool does not report error for incorrect params")
 	}
 }
 
-func TestNewPool(t *testing.T) {
+func TestNewGPool(t *testing.T) {
 
 	inboundChannel := make(chan interface{}, 10)
-	defer close(inboundChannel)
+	outboundChannel := make(chan interface{}, 10)
 
-	pool, err := NewPool(10, 20, 15, 500, 10, 10, inboundChannel, func(input interface{}, channel chan<- interface{}) interface{} {
-		return input
-	})
+	defer func() {
+		close(inboundChannel)
+		close(outboundChannel)
+	}()
+
+	pool, err := NewGPool(10, 20, 15, 500*time.Millisecond, 500*time.Millisecond, inboundChannel, outboundChannel, func(input interface{}) (interface{}, error) {
+		return input, nil
+	}, "test")
 
 	if err != nil {
 		t.Error("Can not create pool", err)
@@ -93,12 +86,12 @@ func TestNewPool(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		pool.InboundChannel <- i
+		pool.InputChannel <- i
 	}
 
 	time.Sleep(2 * time.Second)
 
-	length := len(pool.OutboundChannel)
+	length := len(pool.OutputChannel)
 
 	if length != 10 {
 		t.Errorf("data not treated correctly with outbound len: %d\n", length)
@@ -107,11 +100,16 @@ func TestNewPool(t *testing.T) {
 
 func TestWithPanic(t *testing.T) {
 	inboundChannel := make(chan interface{}, 10)
-	defer close(inboundChannel)
+	outboundChannel := make(chan interface{}, 10)
 
-	pool, err := NewPool(10, 20, 15, 500, 10, 10, inboundChannel, func(input interface{}, channel chan<- interface{}) interface{} {
+	defer func() {
+		close(inboundChannel)
+		close(outboundChannel)
+	}()
+
+	pool, err := NewGPool(10, 20, 15, 500*time.Millisecond, 500*time.Millisecond, inboundChannel, outboundChannel, func(input interface{}) (interface{}, error) {
 		panic("test")
-	})
+	}, "test")
 
 	if err != nil {
 		t.Error("Can not create pool", err)
@@ -124,13 +122,13 @@ func TestWithPanic(t *testing.T) {
 	}()
 
 	for i := 0; i < 10; i++ {
-		pool.InboundChannel <- i
+		pool.InputChannel <- i
 	}
 
 	time.Sleep(2 * time.Second)
 
-	inLength := len(pool.InboundChannel)
-	outLength := len(pool.OutboundChannel)
+	inLength := len(pool.InputChannel)
+	outLength := len(pool.OutputChannel)
 
 	if inLength != 0 {
 		t.Errorf("data not treated correctly with inbound len: %d\n", inLength)

@@ -1,85 +1,103 @@
 package goroutine_pool
 
 import (
+	"errors"
 	"fmt"
 	log "github.com/cihub/seelog"
-	errors "github.com/lrsec/errors/wrapper"
 	"sync/atomic"
 	"time"
 )
 
-func NewPool(initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark int64, inboundChannel chan interface{}, handler func(interface{}, chan<- interface{}) interface{}) (*Pool, error) {
-	if initPoolSize < 0 || maxPoolSize < 0 || maxIdleSize < 0 || maxIdleMs < 0 || outboundChannelBuffer < 0 || watermark < 0 || inboundChannel == nil || handler == nil {
-		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. initPoolSize: %v, maxPoolSize: %v , maxIdleSize: %v, maxIdleMs: %v, outboundChannelBuffer: %v, watermark: %v, inboundChannel: %v handler: %v", initPoolSize, maxPoolSize, maxIdleSize, maxIdleMs, outboundChannelBuffer, watermark, inboundChannel, handler))
-	}
+type GPool struct {
+	minSize     int64
+	maxSize     int64
+	maxIdleSize int64
+	maxIdleTime time.Duration
 
-	pool := &Pool{
-		initPoolSize: initPoolSize,
-		maxPoolSize:  maxPoolSize,
-		maxIdleSize:  maxIdleSize,
-		maxIdleMs:    maxIdleMs,
-		watermark:    watermark,
+	watermark int64
 
-		monitorMs: 1000,
-
-		InboundChannel:  inboundChannel,
-		OutboundChannel: make(chan interface{}, outboundChannelBuffer),
-
-		PoolCloseSignal: make(chan bool),
-	}
-
-	pool.start(handler)
-
-	return pool, nil
-}
-
-type Pool struct {
-	initPoolSize int64
-	maxPoolSize  int64
-	maxIdleMs    int64
-	maxIdleSize  int64
-	monitorMs    int64
-	watermark    int64
+	monitorPeriod time.Duration
 
 	poolSize int64
+	isClosed atomic.Value
 
-	InboundChannel  chan interface{}
-	OutboundChannel chan interface{}
+	InputChannel  chan interface{}
+	OutputChannel chan interface{}
 
-	PoolCloseSignal chan bool
+	Name string
 }
 
-func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{}) {
+func NewGPool(minSize, maxSize, maxIdleSize int64,
+	maxIdleTime, monitorPeriod time.Duration,
+	inputChannel, outputChannel chan interface{},
+	handler func(interface{}) (interface{}, error),
+	name string) (*GPool, error) {
+
+	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil || inputChannel == nil || outputChannel == nil {
+		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. minSize: %v, maxSize: %v, maxIdleSize: %v, handler: %v. inputChannel: %v. outputChannel: %v", minSize, maxSize, maxIdleSize, handler, inputChannel, outputChannel))
+	}
+
+	gpool := &GPool{
+		minSize:     minSize,
+		maxSize:     maxSize,
+		maxIdleSize: maxIdleSize,
+		maxIdleTime: maxIdleTime,
+
+		monitorPeriod: monitorPeriod,
+
+		poolSize:  0,
+		watermark: minSize / 2,
+
+		InputChannel:  inputChannel,
+		OutputChannel: outputChannel,
+
+		Name: name,
+	}
+
+	gpool.isClosed.Store(false)
+
+	gpool.start(handler)
+
+	return gpool, nil
+}
+
+func (gpool *GPool) start(handler func(interface{}) (interface{}, error)) {
 
 	// worker definition
 	worker := func() {
-		atomic.AddInt64(&pool.poolSize, 1)
+		atomic.AddInt64(&(gpool.poolSize), 1)
+		defer atomic.AddInt64(&(gpool.poolSize), -1)
+
 		timer := time.NewTimer(0)
 
 		for {
-			timer.Reset(time.Duration(pool.maxIdleMs) * time.Millisecond)
+			timer.Reset(gpool.maxIdleTime)
 
 			select {
-			case c := <-pool.InboundChannel:
-				result := func() interface{} {
+			case c := <-gpool.InputChannel:
+				result, err := func() (interface{}, error) {
 					defer func() {
 						if r := recover(); r != nil {
 							log.Error("woker handler panic", r)
 						}
 					}()
 
-					return handler(c, pool.OutboundChannel)
+					return handler(c)
 				}()
-				if result != nil {
-					pool.OutboundChannel <- result
+				if err != nil {
+					log.Warnf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, err.Error())
+				} else {
+					if result != nil {
+						gpool.OutputChannel <- result
+					} else {
+						log.Warnf("GPool %s handler get an nil result for input: %v", gpool.Name, c)
+					}
 				}
-			case <-pool.PoolCloseSignal:
-				log.Trace("Recive close signal. Close go routine.")
-				atomic.AddInt64(&pool.poolSize, -1)
-				return
+
 			case <-timer.C:
-				size := atomic.LoadInt64(&pool.poolSize)
-				if size > pool.maxIdleSize && atomic.CompareAndSwapInt64(&pool.poolSize, size, size-1) {
+				poolSize := atomic.LoadInt64(&(gpool.poolSize))
+
+				if poolSize > gpool.maxIdleSize && atomic.CompareAndSwapInt64(&(gpool.poolSize), poolSize, poolSize-1) {
 					log.Trace("Pool idle time longer than maxIdleTime, close")
 					return
 				}
@@ -89,7 +107,7 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 	}
 
 	// start workers
-	for i := int64(0); i < pool.initPoolSize; i++ {
+	for i := int64(0); i < gpool.minSize; i++ {
 		go worker()
 	}
 
@@ -98,19 +116,22 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 		timer := time.NewTimer(0)
 
 		for {
-			timer.Reset(time.Duration(pool.monitorMs) * time.Millisecond)
+			// 如果池关闭,则不在进行 goroutines 扩展与调度
+			if gpool.isClosed.Load().(bool) {
+				return
+			}
+
+			timer.Reset(gpool.monitorPeriod)
 
 			select {
-			case <-pool.PoolCloseSignal:
-				log.Debug("Goroutine is closed. Close all goroutines")
-				close(pool.OutboundChannel)
-				return
+
 			case <-timer.C:
-				blockedSize := int64(len(pool.InboundChannel))
-				if blockedSize > pool.watermark {
-					poolSize := atomic.LoadInt64(&pool.poolSize)
-					if poolSize < pool.maxPoolSize {
-						size := poolSize - pool.maxPoolSize
+				blockedSize := int64(len(gpool.InputChannel))
+
+				if blockedSize > gpool.watermark {
+					poolSize := atomic.LoadInt64(&(gpool.poolSize))
+					if poolSize < gpool.maxSize {
+						size := gpool.maxSize - poolSize
 						blockedSize *= 2
 
 						if size > blockedSize {
@@ -127,6 +148,6 @@ func (pool *Pool) start(handler func(interface{}, chan<- interface{}) interface{
 	}()
 }
 
-func (pool *Pool) Close() {
-	close(pool.PoolCloseSignal)
+func (gpool *GPool) Close() {
+	gpool.isClosed.Store(true)
 }
