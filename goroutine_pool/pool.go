@@ -1,9 +1,9 @@
 package goroutine_pool
 
 import (
-	"errors"
 	"fmt"
 	log "github.com/cihub/seelog"
+	errors "github.com/lrsec/errors/wrapper"
 	"sync/atomic"
 	"time"
 )
