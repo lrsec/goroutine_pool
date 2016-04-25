@@ -30,8 +30,9 @@ type GPool struct {
 func NewGPool(minSize, maxSize, maxIdleSize int64,
 	maxIdleTime, monitorPeriod time.Duration,
 	inputChannel, outputChannel chan interface{},
+	name string,
 	handler func(interface{}) (interface{}, error),
-	name string) (*GPool, error) {
+	) (*GPool, error) {
 
 	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil || inputChannel == nil || outputChannel == nil {
 		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. minSize: %v, maxSize: %v, maxIdleSize: %v, handler: %v. inputChannel: %v. outputChannel: %v", minSize, maxSize, maxIdleSize, handler, inputChannel, outputChannel))
