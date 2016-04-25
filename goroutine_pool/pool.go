@@ -25,6 +25,8 @@ type GPool struct {
 	OutputChannel chan interface{}
 
 	Name string
+
+	handler func(interface{}) (interface{}, error)
 }
 
 func NewGPool(minSize, maxSize, maxIdleSize int64,
@@ -32,7 +34,7 @@ func NewGPool(minSize, maxSize, maxIdleSize int64,
 	inputChannel, outputChannel chan interface{},
 	name string,
 	handler func(interface{}) (interface{}, error),
-	) (*GPool, error) {
+) (*GPool, error) {
 
 	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil || inputChannel == nil || outputChannel == nil {
 		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. minSize: %v, maxSize: %v, maxIdleSize: %v, handler: %v. inputChannel: %v. outputChannel: %v", minSize, maxSize, maxIdleSize, handler, inputChannel, outputChannel))
@@ -53,16 +55,16 @@ func NewGPool(minSize, maxSize, maxIdleSize int64,
 		OutputChannel: outputChannel,
 
 		Name: name,
+
+		handler: handler,
 	}
 
 	gpool.isClosed.Store(false)
 
-	gpool.start(handler)
-
 	return gpool, nil
 }
 
-func (gpool *GPool) start(handler func(interface{}) (interface{}, error)) {
+func (gpool *GPool) Start() {
 
 	// worker definition
 	worker := func() {
@@ -83,7 +85,7 @@ func (gpool *GPool) start(handler func(interface{}) (interface{}, error)) {
 						}
 					}()
 
-					return handler(c)
+					return gpool.handler(c)
 				}()
 				if err != nil {
 					log.Warnf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, err.Error())
