@@ -151,6 +151,20 @@ func (gpool *GPool) Start() {
 	}()
 }
 
-func (gpool *GPool) Close() {
+func (gpool *GPool) Close(d time.Duration) {
 	gpool.isClosed.Store(true)
+
+	loopTimer := time.NewTimer(0)
+	timeoutTimer := time.NewTimer(d)
+
+	for len(gpool.InputChannel) > 0 {
+		loopTimer.Reset(3 * time.Second)
+
+		select {
+		case <-loopTimer.C:
+			continue
+		case <-timeoutTimer.C:
+			return
+		}
+	}
 }
