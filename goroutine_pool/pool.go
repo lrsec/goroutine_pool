@@ -89,7 +89,7 @@ func (gpool *GPool) Start() {
 				}()
 
 				if err != nil {
-					log.Errorf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, err.Error())
+					log.Errorf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, c, err.Error())
 				}
 
 			case <-timer.C:
