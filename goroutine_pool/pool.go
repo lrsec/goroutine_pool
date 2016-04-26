@@ -36,8 +36,8 @@ func NewGPool(minSize, maxSize, maxIdleSize int64,
 	handler func(interface{}, chan interface{}) error,
 ) (*GPool, error) {
 
-	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil || inputChannel == nil || outputChannel == nil {
-		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. minSize: %v, maxSize: %v, maxIdleSize: %v, handler: %v. inputChannel: %v. outputChannel: %v", minSize, maxSize, maxIdleSize, handler, inputChannel, outputChannel))
+	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil {
+		return nil, errors.New(fmt.Sprintf("Illegal parameters to create goroutine pool. minSize: %v, maxSize: %v, maxIdleSize: %v, handler: %v.", minSize, maxSize, maxIdleSize, handler))
 	}
 
 	gpool := &GPool{
