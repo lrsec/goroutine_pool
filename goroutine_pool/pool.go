@@ -26,14 +26,14 @@ type GPool struct {
 
 	Name string
 
-	handler func(interface{}) (interface{}, error)
+	handler func(interface{}, chan interface{}) error
 }
 
 func NewGPool(minSize, maxSize, maxIdleSize int64,
 	maxIdleTime, monitorPeriod time.Duration,
 	inputChannel, outputChannel chan interface{},
 	name string,
-	handler func(interface{}) (interface{}, error),
+	handler func(interface{}, chan interface{}) error,
 ) (*GPool, error) {
 
 	if minSize < 0 || maxSize < 0 || maxIdleSize < 0 || handler == nil || inputChannel == nil || outputChannel == nil {
@@ -78,23 +78,18 @@ func (gpool *GPool) Start() {
 
 			select {
 			case c := <-gpool.InputChannel:
-				result, err := func() (interface{}, error) {
+				err := func() error {
 					defer func() {
 						if r := recover(); r != nil {
 							log.Error("woker handler panic", r)
 						}
 					}()
 
-					return gpool.handler(c)
+					return gpool.handler(c, gpool.OutputChannel)
 				}()
+
 				if err != nil {
-					log.Warnf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, err.Error())
-				} else {
-					if result != nil {
-						gpool.OutputChannel <- result
-					} else {
-						log.Warnf("GPool %s handler get an nil result for input: %v", gpool.Name, c)
-					}
+					log.Errorf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, err.Error())
 				}
 
 			case <-timer.C:
