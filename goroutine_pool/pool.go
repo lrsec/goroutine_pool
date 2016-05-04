@@ -81,7 +81,7 @@ func (gpool *GPool) Start() {
 				err := func() error {
 					defer func() {
 						if r := recover(); r != nil {
-							log.Error("woker handler panic", r)
+							log.Errorf("GPool %s handler panic for input: %+v. Panic: %+v. ", gpool.Name, c, r)
 						}
 					}()
 
@@ -89,7 +89,7 @@ func (gpool *GPool) Start() {
 				}()
 
 				if err != nil {
-					log.Errorf("GPool %s handler return error for input: %v. Error: %s", gpool.Name, c, err.Error())
+					log.Errorf("GPool %s handler return error for input: %+v. Error: %s. ", gpool.Name, c, err.Error())
 				}
 
 			case <-timer.C:
